@@ -20,8 +20,8 @@ struct Record {
     description: String,
     account: String,
     counter_account: String,
-    credit: String,
     debit: String,
+    credit: String,
 }
 
 fn main() -> Result<()> {
@@ -121,17 +121,48 @@ fn main() -> Result<()> {
                     }
                     let datetime =
                         chrono::NaiveDateTime::parse_from_str(&record[10].trim(), "%F %T").unwrap();
+                    let counterpart = record[1].trim();
+                    let orig_desc = record[3].trim();
                     let amount = record[5].trim();
+
                     let (debit, credit) = match record[0].trim() {
-                        "支出" | "其他" => ("", amount),
+                        "支出" => ("", amount),
                         "收入" => (amount, ""),
                         _ => {
-                            dbg!(&record[0]);
-                            unimplemented!()
+                            if orig_desc.contains("收益发放") {
+                                (amount, "")
+                            } else if orig_desc.contains("余额宝-自动转入") {
+                                ("", amount)
+                            } else if orig_desc.contains("余额宝-转出到余额") {
+                                (amount, "")
+                            } else if orig_desc.contains("充值-普通充值") {
+                                continue;
+                            } else if orig_desc.contains("余额宝-单次转入") {
+                                ("", amount)
+                            } else if orig_desc.contains("蚂蚁借呗放款至余额") {
+                                (amount, "")
+                            } else if orig_desc.contains("蚂蚁借呗还款") {
+                                ("", amount)
+                            } else if orig_desc.contains("还款-花呗") {
+                                ("", amount)
+                            } else if orig_desc.contains("退款") {
+                                (amount, "")
+                            } else if orig_desc.contains("信用卡还款") {
+                                ("", amount)
+                            } else if orig_desc.contains("蚂蚁借呗放款至银行卡") {
+                                (amount, "")
+                            } else if orig_desc.contains("快速提现") {
+                                ("", amount)
+                            } else if orig_desc.contains("心愿单-定时收款") {
+                                ("", amount)
+                            } else {
+                                println!("{}", orig_desc);
+                                continue;
+                                unimplemented!("{}", orig_desc)
+                            }
                         }
                     };
 
-                    let counterpart = record[1].trim();
                     let matches = counterpart_set
                         .matches(counterpart)
                         .into_iter()
@@ -139,17 +170,34 @@ fn main() -> Result<()> {
                     if matches.len() > 1 {
                         panic!("fuck");
                     }
+
                     let (description, counter_account) = if matches.is_empty() {
-                        (record[3].trim(), "支出:杂项")
+                        (orig_desc, "支出:杂项")
                     } else {
                         match matches[0] {
-                            0 => (record[3].trim(), "支出:零食"),
+                            0 => (orig_desc, "支出:零食"),
                             1 => ("滴滴打车", "支出:公共交通:打车"),
                             2 => ("三和超市", "支出:食品杂货"),
                             3 => ("水电费", "支出:水电费"),
-                            4 => (record[3].trim(), "支出:饮料"),
+                            4 => {
+                                if orig_desc.contains("电费充值") {
+                                    ("电费", "支出:水电费:电")
+                                } else if orig_desc.contains("校园一卡通") {
+                                    ("饭卡", "支出:用餐")
+                                } else if orig_desc.contains("校园网") {
+                                    ("宽带", "支出:网络")
+                                } else if orig_desc.contains("系统跳转") {
+                                    ("住宿费", "支出:租金")
+                                } else if orig_desc.contains("四六级") {
+                                    ("四六级报名费", "支出:教育")
+                                } else if orig_desc.contains("毕业生图像信息采集缴费") {
+                                    ("2020届毕业生图像信息采集缴费", "支出:教育")
+                                } else {
+                                    panic!("{}", &orig_desc);
+                                }
+                            }
                             5 | 6 => ("零食", "支出:零食"),
-                            7 => (record[3].trim(), "负债:花呗"),
+                            7 => (orig_desc, "负债:花呗"),
                             _ => unimplemented!(),
                         }
                     };
@@ -183,8 +231,8 @@ fn main() -> Result<()> {
                             description: description.into(),
                             account: account.into(),
                             counter_account: counter_account.into(),
-                            credit: credit.into(),
                             debit: debit.into(),
+                            credit: credit.into(),
                         },
                     );
                 }
@@ -224,16 +272,22 @@ fn main() -> Result<()> {
                         panic!("fuck");
                     }
                     let (description, counter_account) = if matches.is_empty() {
-                        (record[3].trim(), "支出:杂项")
+                        if record[1].trim() == "转账" {
+                            (format!("转账给{}", record[2].trim()), "支出:杂项")
+                        } else if record[1].trim() == "微信红包" {
+                            (format!("{}的红包", record[2].trim()), "支出:礼品")
+                        } else {
+                            (record[3].trim().to_owned(), "支出:杂项")
+                        }
                     } else {
                         match matches[0] {
-                            0 => (record[3].trim(), "支出:零食"),
-                            1 => ("滴滴打车", "支出:公共交通:打车"),
-                            2 => ("三和超市", "支出:食品杂货"),
-                            3 => ("水电费", "支出:水电费"),
-                            4 => (record[3].trim(), "支出:饮料"),
-                            5 | 6 => ("零食", "支出:零食"),
-                            7 => (record[3].trim(), "负债:花呗"),
+                            0 => (record[3].trim().to_owned(), "支出:零食"),
+                            1 => ("滴滴打车".to_owned(), "支出:公共交通:打车"),
+                            2 => ("三和超市".to_owned(), "支出:食品杂货"),
+                            3 => ("水电费".to_owned(), "支出:水电费"),
+                            4 => (record[3].trim().to_owned(), "支出:饮料"),
+                            5 | 6 => ("零食".to_owned(), "支出:零食"),
+                            7 => (record[3].trim().to_owned(), "负债:花呗"),
                             _ => unimplemented!(),
                         }
                     };
